@@ -87,6 +87,10 @@
     private string _selectedModel = "";
     private IBrowserFile? _uploadedFile;
     private bool _isGenerating = false;
+    private NavigationManager NavigationManager { get; set; } = default!;
+
+    [Inject]
+    public NavigationManager NavManager { get; set; } = default!;
 
     private void OnFileSelected(InputFileChangeEventArgs e)
     {
@@ -101,8 +105,11 @@
         }
 
         _isGenerating = true;
+
         await Task.Delay(3000);
+
         _isGenerating = false;
 
+        NavManager.NavigateTo("/study-cards");
     }
 }
