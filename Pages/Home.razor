@@ -19,24 +19,32 @@
         </div>
         <p class="text-xl text-white">AI-Powered Study Cards Generator</p>
     </header>
+
     <div
         class="bg-white p-8 rounded-xl shadow-2xl space-y-6 transform transition-all duration-500 @(_isGenerating ? "scale-105" : "")">
         <h2 class="text-2xl font-bold tracking-tight text-center">
             Generate Your Study Cards
         </h2>
+
         <div>
             <label for="ai-model" class="block text-sm font-medium text-gray-700 mb-1">Choose AI Model</label>
-            <select @bind="_selectedModel" id="ai-model" class="select-ai-model">
+            <select @bind="_selectedModel" id="ai-model" class="select-ai-model" disabled="@_isGenerating">
                 <option value="">Select AI Model</option>
                 <option value="gpt-4o-mini-2024-07-18">gpt-4o-mini (Cheaper)</option>
                 <option value="gpt-4o-2024-08-06">gpt-4o (Most Capable)</option>
             </select>
+            @if (string.IsNullOrEmpty(_selectedModel))
+            {
+                <div class="text-red-500 text-sm mt-1">Please select an AI model</div>
+            }
         </div>
+
         <div>
             <label for="pdf-upload" class="block text-sm font-medium text-gray-700 mb-1">Upload PDF</label>
-            <InputFile OnChange="@OnFileSelected" id="pdf-upload" accept=".pdf" class="hidden" />
+            <InputFile OnChange="@OnFileSelected" id="pdf-upload" accept=".pdf,application/pdf" class="hidden"
+                disabled="@_isGenerating" />
             <label for="pdf-upload"
-                class="flex flex-col items-center justify-center w-full h-32 px-4 transition bg-white border-2 border-gray-300 border-dashed rounded-md appearance-none cursor-pointer hover:border-purple-400 focus:outline-none">
+                class="flex flex-col items-center justify-center w-full h-32 px-4 transition bg-white border-2 border-gray-300 border-dashed rounded-md appearance-none cursor-pointer hover:border-purple-400 focus:outline-none @(_isGenerating ? "opacity-50 cursor-not-allowed" : "")">
                 @if (_uploadedFile != null)
                 {
                     <span class="flex items-center space-x-2">
@@ -45,6 +53,16 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                         </svg>
                         <span class="font-medium text-purple-600">@_uploadedFile.Name</span>
+                        @if (!_isGenerating)
+                        {
+                            <button @onclick="ClearFile" @onclick:preventDefault class="text-red-500 hover:text-red-700">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd"
+                                        d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                                        clip-rule="evenodd" />
+                                </svg>
+                            </button>
+                        }
                     </span>
                 }
                 else
@@ -60,7 +78,31 @@
                     </span>
                 }
             </label>
+
+            @if (!string.IsNullOrEmpty(_fileError))
+            {
+                <div class="text-red-500 text-sm mt-1">@_fileError</div>
+            }
         </div>
+
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <div class="bg-red-50 border-l-4 border-red-400 p-4" role="alert">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd"
+                                d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                                clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-sm text-red-700">@_errorMessage</p>
+                    </div>
+                </div>
+            </div>
+        }
+
         <button @onclick="GenerateStudycards"
             disabled="@(_isGenerating || string.IsNullOrEmpty(_selectedModel) || _uploadedFile == null)"
             class="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200">
@@ -75,7 +117,7 @@
                             d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
                         </path>
                     </svg>
-                    Generating...
+                    Generating Study Cards...
                 </span>
             }
             else
@@ -83,6 +125,13 @@
                 <span>Generate Study Cards</span>
             }
         </button>
+
+        @if (_uploadedFile != null)
+        {
+            <div class="text-sm text-gray-600 text-center">
+                File size: @FormatFileSize(_uploadedFile.Size)
+            </div>
+        }
     </div>
 </div>
 
@@ -91,6 +140,8 @@
     private IBrowserFile? _uploadedFile;
     private bool _isGenerating = false;
     private string? _errorMessage;
+    private string? _fileError;
+    private const int MaxFileSize = 10 * 1024 * 1024; // 10MB
 
     [Inject]
     private IStudyCardService StudyCardService { get; set; } = default!;
@@ -98,10 +149,47 @@
     [Inject]
     public NavigationManager NavManager { get; set; } = default!;
 
-    private void OnFileSelected(InputFileChangeEventArgs e)
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
     {
-        _uploadedFile = e.File;
+        _fileError = null;
         _errorMessage = null;
+        var file = e.File;
+
+        if (!file.ContentType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            _fileError = "Please select a PDF file.";
+            _uploadedFile = null;
+            return;
+        }
+
+        if (file.Size > MaxFileSize)
+        {
+            _fileError = $"File size must be less than {FormatFileSize(MaxFileSize)}.";
+            _uploadedFile = null;
+            return;
+        }
+
+        _uploadedFile = file;
+    }
+
+    private void ClearFile()
+    {
+        _uploadedFile = null;
+        _fileError = null;
+        _errorMessage = null;
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+        int order = 0;
+        double len = bytes;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
     }
 
     private async Task GenerateStudycards()
@@ -116,8 +204,8 @@
 
         try
         {
-            using var stream = _uploadedFile.OpenReadStream();
-            var cards = await StudyCardService.GenerateStudyCardsAsync(
+            using var stream = _uploadedFile.OpenReadStream(MaxFileSize);
+            await StudyCardService.GenerateStudyCardsAsync(
             stream,
             _uploadedFile.Name,
             10,
@@ -128,12 +216,21 @@
         }
         catch (Exception ex)
         {
-            _errorMessage = "Failed to generate study cards. Please try again.";
             Console.Error.WriteLine($"Error generating cards: {ex.Message}");
+            Console.Error.WriteLine($"Stack trace: {ex.StackTrace}");
+
+            _errorMessage = ex switch
+            {
+                UnauthorizedAccessException => "Your session has expired. Please log in again.",
+                HttpRequestException when ex.Message.Contains("400") => "Invalid PDF file or format.",
+                HttpRequestException when ex.Message.Contains("413") => "File size is too large.",
+                _ => "An error occurred while generating study cards. Please try again."
+            };
         }
         finally
         {
             _isGenerating = false;
+            StateHasChanged();
         }
     }
 }

@@ -24,7 +24,10 @@ namespace StudyCardsGenerator.Services
             _httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
 
             var content = new MultipartFormDataContent();
-            content.Add(new StreamContent(pdfStream), "file", "document.pdf");
+            var fileContent = new StreamContent(pdfStream);
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/pdf");
+
+            content.Add(fileContent, "file", "document.pdf");
             content.Add(new StringContent(title), "title");
             content.Add(new StringContent(targetCount.ToString()), "targetCount");
             if (!string.IsNullOrEmpty(model))
