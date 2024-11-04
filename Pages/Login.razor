@@ -1,0 +1,147 @@
+@page "/login"
+@using StudyCardsGenerator.Models.Auth
+@using StudyCardsGenerator.Services.Interfaces
+@inject HttpClient Http
+@inject NavigationManager NavigationManager
+@inject IAuthService AuthService
+
+<PageTitle>Login - Study Cards AI</PageTitle>
+
+<div class="w-full max-w-md space-y-8">
+    <header class="text-center">
+        <div class="flex items-center justify-center space-x-2 mb-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-white" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+                <polyline points="10 17 15 12 10 7" />
+                <line x1="15" y1="12" x2="3" y2="12" />
+            </svg>
+            <h1 class="text-4xl font-bold text-white">Login</h1>
+        </div>
+        <p class="text-xl text-white">Sign in to your account</p>
+    </header>
+
+    <div class="bg-white p-8 rounded-xl shadow-2xl space-y-6">
+        <EditForm Model="@loginModel" OnValidSubmit="HandleLogin" class="space-y-6">
+            <DataAnnotationsValidator />
+
+            <div>
+                <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <InputText id="email" @bind-Value="loginModel.Email"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500" />
+                <ValidationMessage For="@(() => loginModel.Email)" class="text-red-500 text-sm" />
+            </div>
+
+            <div>
+                <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                <InputText type="password" id="password" @bind-Value="loginModel.Password"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500" />
+                <ValidationMessage For="@(() => loginModel.Password)" class="text-red-500 text-sm" />
+            </div>
+
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="bg-red-50 border-l-4 border-red-400 p-4">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd"
+                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                                    clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm text-red-700">@errorMessage</p>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <div>
+                <button type="submit" disabled="@isLoading"
+                    class="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200">
+                    @if (isLoading)
+                    {
+                        <div class="flex items-center justify-center">
+                            <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg"
+                                fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
+                                </circle>
+                                <path class="opacity-75" fill="currentColor"
+                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                                </path>
+                            </svg>
+                            Signing in...
+                        </div>
+                    }
+                    else
+                    {
+                        <span>Sign in</span>
+                    }
+                </button>
+            </div>
+        </EditForm>
+
+        <div class="text-center">
+            <p class="text-sm text-gray-600">
+                Don't have an account?
+                <a href="/register" class="font-medium text-purple-600 hover:text-purple-500">
+                    Register here
+                </a>
+            </p>
+        </div>
+    </div>
+</div>
+
+@code {
+    private LoginModel loginModel = new();
+    private bool isLoading;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (await AuthService.IsUserAuthenticated())
+        {
+            NavigationManager.NavigateTo("/");
+        }
+    }
+
+    private async Task HandleLogin()
+    {
+        try
+        {
+            isLoading = true;
+            errorMessage = null;
+
+            var response = await Http.PostAsJsonAsync("api/auth/login", loginModel);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<AuthResponse>();
+                if (result?.Token != null)
+                {
+                    await AuthService.SetToken(result.Token);
+                    NavigationManager.NavigateTo("/");
+                }
+                else
+                {
+                    errorMessage = "Invalid response from server";
+                }
+            }
+            else
+            {
+                var error = await response.Content.ReadFromJsonAsync<AuthResponse>();
+                errorMessage = error?.Message ?? "An error occurred during login";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "An unexpected error occurred. Please try again.";
+            Console.WriteLine($"Login error: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}
