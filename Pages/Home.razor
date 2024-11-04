@@ -4,6 +4,12 @@
 @using StudyCardsGenerator.Services.Interfaces
 @attribute [RequireAuthentication]
 
+@inject StudyCardsStateContainer StateContainer
+@inject IStudyCardService StudyCardService
+@inject NavigationManager NavManager
+
+
+
 <PageTitle>Study Cards AI - AI-Powered Study Cards Generator</PageTitle>
 
 <div class="w-full max-w-md space-y-8">
@@ -143,12 +149,6 @@
     private string? _fileError;
     private const int MaxFileSize = 10 * 1024 * 1024; // 10MB
 
-    [Inject]
-    private IStudyCardService StudyCardService { get; set; } = default!;
-
-    [Inject]
-    public NavigationManager NavManager { get; set; } = default!;
-
     private async Task OnFileSelected(InputFileChangeEventArgs e)
     {
         _fileError = null;
@@ -205,12 +205,15 @@
         try
         {
             using var stream = _uploadedFile.OpenReadStream(MaxFileSize);
-            await StudyCardService.GenerateStudyCardsAsync(
-            stream,
-            _uploadedFile.Name,
-            10,
-            _selectedModel
+            var cards = await StudyCardService.GenerateStudyCardsAsync(
+                stream,
+                _uploadedFile.Name,
+                10,
+                _selectedModel
             );
+
+            await StateContainer.SetCurrentSetTitleAsync(_uploadedFile.Name);
+            await StateContainer.SetCurrentCardsAsync(cards);
 
             NavManager.NavigateTo("/study-cards");
         }

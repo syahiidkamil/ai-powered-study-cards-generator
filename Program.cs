@@ -30,6 +30,7 @@ builder.Services.AddScoped<AuthenticationStateProvider, CustomAuthStateProvider>
 builder.Services.AddScoped<ILocalStorageService, LocalStorageService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IStudyCardService, StudyCardService>();
+builder.Services.AddScoped<StudyCardsStateContainer>();
 
 builder.Services.AddScoped<AuthenticationHeaderHandler>();
 builder.Services.AddHttpClient("API", client =>

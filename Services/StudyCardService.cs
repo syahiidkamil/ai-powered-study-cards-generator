@@ -36,9 +36,28 @@ namespace StudyCardsGenerator.Services
             var response = await _httpClient.PostAsync("api/flashcards/sets", content);
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<StudyCardSet>();
-            return result?.StudyCards ?? new List<StudyCard>();
+            var jsonResponse = await response.Content.ReadAsStringAsync();
+            Console.WriteLine($"API Response: {jsonResponse}");
+
+            var apiResponse = await response.Content.ReadFromJsonAsync<FlashcardSetResponse>();
+            
+            if (apiResponse == null)
+            {
+                Console.WriteLine("Failed to deserialize response");
+                throw new Exception("Failed to deserialize server response");
+            }
+
+            Console.WriteLine($"Successfully deserialized response with {apiResponse.Flashcards.Count} flashcards");
+
+            return apiResponse.Flashcards.Select(f => new StudyCard
+            {
+                Question = f.Question,
+                Answer = f.Answer,
+                IsAnswerVisible = true
+            }).ToList();
         }
+
+
 
         public async Task<List<StudyCard>> GetStudyCardsAsync(int setId)
         {
@@ -96,5 +115,5 @@ namespace StudyCardsGenerator.Services
             return await response.Content.ReadFromJsonAsync<StudyCardSet>()
                 ?? throw new Exception("Failed to update flashcard set");
         }
-    }
+    }    
 }
