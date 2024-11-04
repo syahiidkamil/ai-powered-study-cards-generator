@@ -4,7 +4,7 @@ namespace StudyCardsGenerator.Attributes
 {
     public class RequireAuthenticationAttribute : AuthorizeAttribute
     {
-        public RequireAuthenticationAttribute()
+        public RequireAuthenticationAttribute() : base()
         {
         }
     }

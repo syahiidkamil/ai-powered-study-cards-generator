@@ -1,104 +1,108 @@
-using System.Net.Http.Headers;
+using Microsoft.AspNetCore.Components.Authorization;
 using System.Security.Claims;
 using System.Text.Json;
-using Microsoft.AspNetCore.Components.Authorization;
 using StudyCardsGenerator.Services.Interfaces;
 
-namespace StudyCardsGenerator.Services;
-
-public class CustomAuthStateProvider : AuthenticationStateProvider
+namespace StudyCardsGenerator.Services
 {
-    private readonly ILocalStorageService _localStorage;
-    private readonly HttpClient _httpClient;
-    private AuthenticationState _anonymous;
-
-    public CustomAuthStateProvider(ILocalStorageService localStorage, HttpClient httpClient)
+    public class CustomAuthStateProvider : AuthenticationStateProvider
     {
-        _localStorage = localStorage;
-        _httpClient = httpClient;
-        _anonymous = new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
-    }
+        private readonly ILocalStorageService _localStorage;
+        private readonly HttpClient _httpClient;
+        private readonly AuthenticationState _anonymous;
 
-    public override async Task<AuthenticationState> GetAuthenticationStateAsync()
-    {
-        try
+        public CustomAuthStateProvider(ILocalStorageService localStorage, HttpClient httpClient)
         {
-            var token = await _localStorage.GetItemAsync<string>("authToken");
+            _localStorage = localStorage;
+            _httpClient = httpClient;
+            _anonymous = new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
+        }
 
-            if (string.IsNullOrEmpty(token))
+        public override async Task<AuthenticationState> GetAuthenticationStateAsync()
+        {
+            try
+            {
+                var token = await _localStorage.GetItemAsync<string>("authToken");
+                if (string.IsNullOrEmpty(token))
+                {
+                    return _anonymous;
+                }
+
+                var claims = ParseClaimsFromJwt(token);
+                if (!claims.Any())
+                {
+                    return _anonymous;
+                }
+
+                var expiry = claims.FirstOrDefault(c => c.Type.Equals("exp"))?.Value;
+                if (expiry != null)
+                {
+                    var expiryDateTime = DateTimeOffset.FromUnixTimeSeconds(Convert.ToInt64(expiry));
+                    if (expiryDateTime <= DateTimeOffset.UtcNow)
+                    {
+                        await _localStorage.RemoveItemAsync("authToken");
+                        return _anonymous;
+                    }
+                }
+
+                return new AuthenticationState(
+                    new ClaimsPrincipal(new ClaimsIdentity(claims, "jwt")));
+            }
+            catch
             {
                 return _anonymous;
             }
+        }
 
-            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        public void NotifyAuthenticationStateChanged()
+        {
+            NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
+        }
 
-            var claims = ParseClaimsFromJwt(token);
-            var expiry = claims.FirstOrDefault(c => c.Type.Equals("exp"))?.Value;
+        private IEnumerable<Claim> ParseClaimsFromJwt(string jwt)
+        {
+            var claims = new List<Claim>();
+            var payload = jwt.Split('.')[1];
+            var jsonBytes = ParseBase64WithoutPadding(payload);
+            var keyValuePairs = JsonSerializer.Deserialize<Dictionary<string, object>>(jsonBytes);
 
-            if (expiry != null)
+            if (keyValuePairs != null)
             {
-                var expiryDateTime = DateTimeOffset.FromUnixTimeSeconds(Convert.ToInt64(expiry));
-                if (expiryDateTime <= DateTimeOffset.UtcNow)
+                keyValuePairs.TryGetValue(ClaimTypes.Role, out object? roles);
+
+                if (roles != null)
                 {
-                    await _localStorage.RemoveItemAsync("authToken");
-                    return _anonymous;
+                    if (roles.ToString()!.Trim().StartsWith("["))
+                    {
+                        var parsedRoles = JsonSerializer.Deserialize<string[]>(roles.ToString()!);
+                        claims.AddRange(parsedRoles!.Select(role => new Claim(ClaimTypes.Role, role)));
+                    }
+                    else
+                    {
+                        claims.Add(new Claim(ClaimTypes.Role, roles.ToString()!));
+                    }
+
+                    keyValuePairs.Remove(ClaimTypes.Role);
                 }
+
+                claims.AddRange(keyValuePairs.Select(kvp => new Claim(kvp.Key, kvp.Value.ToString()!)));
             }
 
-            return new AuthenticationState(
-                new ClaimsPrincipal(
-                    new ClaimsIdentity(claims, "jwt")));
+            return claims;
         }
-        catch
+
+        private byte[] ParseBase64WithoutPadding(string base64)
         {
-            return _anonymous;
-        }
-    }
-
-    public void NotifyAuthenticationStateChanged()
-    {
-        NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
-    }
-
-    private IEnumerable<Claim> ParseClaimsFromJwt(string jwt)
-    {
-        var claims = new List<Claim>();
-        var payload = jwt.Split('.')[1];
-        var jsonBytes = ParseBase64WithoutPadding(payload);
-        var keyValuePairs = JsonSerializer.Deserialize<Dictionary<string, object>>(jsonBytes);
-
-        if (keyValuePairs != null)
-        {
-            keyValuePairs.TryGetValue(ClaimTypes.Role, out object? roles);
-
-            if (roles != null)
+            switch (base64.Length % 4)
             {
-                if (roles.ToString()!.Trim().StartsWith("["))
-                {
-                    var parsedRoles = JsonSerializer.Deserialize<string[]>(roles.ToString()!);
-                    claims.AddRange(parsedRoles!.Select(role => new Claim(ClaimTypes.Role, role)));
-                }
-                else
-                {
-                    claims.Add(new Claim(ClaimTypes.Role, roles.ToString()!));
-                }
-
-                keyValuePairs.Remove(ClaimTypes.Role);
+                case 2:
+                    base64 += "==";
+                    break;
+                case 3:
+                    base64 += "=";
+                    break;
             }
-
-            claims.AddRange(keyValuePairs.Select(kvp => new Claim(kvp.Key, kvp.Value.ToString()!)));
+            return Convert.FromBase64String(base64);
         }
-
-        return claims;
-    }
-
-    private byte[] ParseBase64WithoutPadding(string base64)
-    {
-        switch (base64.Length % 4)
-        {
-            case 2: base64 += "=="; break;
-            case 3: base64 += "="; break;
-        }
-        return Convert.FromBase64String(base64);
     }
 }
