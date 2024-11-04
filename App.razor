@@ -1,7 +1,31 @@
-﻿<CascadingAuthenticationState>
+﻿@using Microsoft.AspNetCore.Components.Authorization
+
+<CascadingAuthenticationState>
     <Router AppAssembly="@typeof(App).Assembly">
         <Found Context="routeData">
-            <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+            <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
+                <NotAuthorized>
+                    @if (!context.User.Identity?.IsAuthenticated ?? true)
+                    {
+                        <RedirectToLogin />
+                    }
+                    else
+                    {
+                        <p>You are not authorized to access this resource.</p>
+                    }
+                </NotAuthorized>
+                <Authorizing>
+                    <div
+                        class="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-400 via-pink-500 to-red-500">
+                        <div class="bg-white p-8 rounded-xl shadow-2xl">
+                            <div class="flex items-center space-x-3">
+                                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+                                <p class="text-lg text-gray-600">Authorizing...</p>
+                            </div>
+                        </div>
+                    </div>
+                </Authorizing>
+            </AuthorizeRouteView>
             <FocusOnNavigate RouteData="@routeData" Selector="h1" />
         </Found>
         <NotFound>
@@ -12,3 +36,29 @@
         </NotFound>
     </Router>
 </CascadingAuthenticationState>
+
+@code {
+    [Inject]
+    private NavigationManager NavigationManager { get; set; } = default!;
+}
+
+@code {
+    public class RedirectToLogin : ComponentBase
+    {
+        [Inject]
+        private NavigationManager NavigationManager { get; set; } = default!;
+
+        protected override void OnInitialized()
+        {
+            var returnUrl = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+            if (string.IsNullOrEmpty(returnUrl))
+            {
+                NavigationManager.NavigateTo("/login", forceLoad: false);
+            }
+            else
+            {
+                NavigationManager.NavigateTo($"/login?returnUrl={Uri.EscapeDataString(returnUrl)}", forceLoad: false);
+            }
+        }
+    }
+}

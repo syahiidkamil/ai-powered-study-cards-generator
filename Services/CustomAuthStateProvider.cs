@@ -10,27 +10,49 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
 {
     private readonly ILocalStorageService _localStorage;
     private readonly HttpClient _httpClient;
+    private AuthenticationState _anonymous;
 
     public CustomAuthStateProvider(ILocalStorageService localStorage, HttpClient httpClient)
     {
         _localStorage = localStorage;
         _httpClient = httpClient;
+        _anonymous = new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
     }
 
     public override async Task<AuthenticationState> GetAuthenticationStateAsync()
     {
-        var token = await _localStorage.GetItemAsync<string>("authToken");
-
-        if (string.IsNullOrEmpty(token))
+        try
         {
-            return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
+            var token = await _localStorage.GetItemAsync<string>("authToken");
+
+            if (string.IsNullOrEmpty(token))
+            {
+                return _anonymous;
+            }
+
+            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            var claims = ParseClaimsFromJwt(token);
+            var expiry = claims.FirstOrDefault(c => c.Type.Equals("exp"))?.Value;
+
+            if (expiry != null)
+            {
+                var expiryDateTime = DateTimeOffset.FromUnixTimeSeconds(Convert.ToInt64(expiry));
+                if (expiryDateTime <= DateTimeOffset.UtcNow)
+                {
+                    await _localStorage.RemoveItemAsync("authToken");
+                    return _anonymous;
+                }
+            }
+
+            return new AuthenticationState(
+                new ClaimsPrincipal(
+                    new ClaimsIdentity(claims, "jwt")));
         }
-
-        _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-
-        return new AuthenticationState(
-            new ClaimsPrincipal(
-                new ClaimsIdentity(ParseClaimsFromJwt(token), "jwt")));
+        catch
+        {
+            return _anonymous;
+        }
     }
 
     public void NotifyAuthenticationStateChanged()
