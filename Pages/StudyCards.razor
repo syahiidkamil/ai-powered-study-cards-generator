@@ -1,8 +1,6 @@
 @page "/study-cards"
 @using StudyCardsGenerator.Models
-@using StudyCardsGenerator.Services
-@inject NavigationManager NavigationManager
-@inject IStudyCardService StudyCardService
+@using StudyCardsGenerator.Services.Interfaces
 @using StudyCardsGenerator.Attributes
 @attribute [RequireAuthentication]
 
@@ -13,49 +11,112 @@
         <header class="text-center mb-8">
             <h1 class="text-4xl font-bold text-white mb-2">Your Study Cards</h1>
             <p class="text-xl text-white mb-4">Review and learn from your AI-generated study cards</p>
-            <button @onclick="ToggleAllAnswers"
-                class="bg-white text-purple-600 hover:bg-purple-100 font-bold py-2 px-4 rounded">
-                @(_areAllAnswersVisible ? "Hide All Answers" : "Show All Answers")
-            </button>
+
+            @if (!_isLoading && _studyCardSets.Any())
+            {
+                <button @onclick="ToggleAllAnswers"
+                    class="bg-white text-purple-600 hover:bg-purple-100 font-bold py-2 px-4 rounded">
+                    @(_areAllAnswersVisible ? "Hide All Answers" : "Show All Answers")
+                </button>
+            }
         </header>
 
-        <div class="grid grid-cols-3 gap-6 h-[calc(100vh-16rem)] overflow-y-auto pr-4">
-            @foreach (var card in _studyCards)
+        @if (_isLoading)
+        {
+            <div class="flex justify-center items-center">
+                <div class="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-white"></div>
+            </div>
+        }
+        else if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded" role="alert">
+                <p>@_errorMessage</p>
+            </div>
+        }
+        else if (!_studyCardSets.Any())
+        {
+            <div class="text-center text-white">
+                <p class="text-xl mb-4">You haven't created any study cards yet.</p>
+                <button @onclick="NavigateToHome"
+                    class="bg-white text-purple-600 hover:bg-purple-100 font-bold py-2 px-4 rounded">
+                    Create Your First Set
+                </button>
+            </div>
+        }
+        else
+        {
+            @foreach (var set in _studyCardSets)
             {
-                                <div class="bg-white rounded-lg shadow-md overflow-hidden flex flex-col h-80">
-                                    <div class="p-6 flex-grow">
-                                        <h3 class="text-lg font-semibold mb-4">@card.Question</h3>
-                        @if (card.IsAnswerVisible)
-                        {
-                                                            <p class="text-gray-600">@card.Answer</p>
-                        }
-                                    </div>
-                                    <div class="bg-gray-100 px-6 py-4 mt-auto">
-                                        <button @onclick="() => ToggleCardVisibility(card)"
-                                            class="text-purple-600 hover:text-purple-800 font-medium">
-                            @(card.IsAnswerVisible ? "Hide Answer" : "Show Answer")
-                                        </button>
-                                    </div>
-                                </div>
-            }
-        </div>
+                <div class="mb-8">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-2xl font-bold text-white">@set.Title</h2>
+                        <button @onclick="() => DeleteSet(set)"
+                            class="bg-red-500 text-white hover:bg-red-600 font-bold py-2 px-4 rounded">
+                            Delete Set
+                        </button>
+                    </div>
 
-        <div class="mt-8 text-center">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        @foreach (var card in set.StudyCards)
+                        {
+                            <div class="bg-white rounded-lg shadow-md overflow-hidden flex flex-col h-80">
+                                <div class="p-6 flex-grow">
+                                    <h3 class="text-lg font-semibold mb-4">@card.Question</h3>
+                                    @if (card.IsAnswerVisible)
+                                    {
+                                        <p class="text-gray-600">@card.Answer</p>
+                                    }
+                                </div>
+                                <div class="bg-gray-100 px-6 py-4 mt-auto">
+                                    <button @onclick="() => ToggleCardVisibility(card)"
+                                        class="text-purple-600 hover:text-purple-800 font-medium">
+                                        @(card.IsAnswerVisible ? "Hide Answer" : "Show Answer")
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            <div class="mt-8 text-center">
             <button @onclick="NavigateToHome"
                 class="bg-white text-purple-600 hover:bg-purple-100 font-bold py-2 px-4 rounded">
                 Generate More Cards
             </button>
         </div>
+        }
     </div>
 </div>
 
 @code {
-    private List<StudyCard> _studyCards = new();
+    private List<StudyCardSet> _studyCardSets = new();
     private bool _areAllAnswersVisible = true;
+    private bool _isLoading = true;
+    private string? _errorMessage;
 
-    protected override void OnInitialized()
+    [Inject]
+    private IStudyCardService StudyCardService { get; set; } = default!;
+
+    [Inject]
+    private NavigationManager NavigationManager { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
     {
-        _studyCards = StudyCardService.GetSampleStudyCards();
+        try
+        {
+            _isLoading = true;
+            _studyCardSets = await StudyCardService.GetAllSetsAsync();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = "Failed to load study cards. Please try again.";
+            Console.Error.WriteLine($"Error loading sets: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
     }
 
     private void ToggleCardVisibility(StudyCard card)
@@ -67,15 +128,36 @@
     private void ToggleAllAnswers()
     {
         _areAllAnswersVisible = !_areAllAnswersVisible;
-        foreach (var card in _studyCards)
+        foreach (var set in _studyCardSets)
         {
-            card.IsAnswerVisible = _areAllAnswersVisible;
+            foreach (var card in set.StudyCards)
+            {
+                card.IsAnswerVisible = _areAllAnswersVisible;
+            }
         }
     }
 
     private void UpdateGlobalVisibilityState()
     {
-        _areAllAnswersVisible = _studyCards.All(card => card.IsAnswerVisible);
+        _areAllAnswersVisible = _studyCardSets.All(set =>
+        set.StudyCards.All(card => card.IsAnswerVisible));
+    }
+
+    private async Task DeleteSet(StudyCardSet set)
+    {
+        try
+        {
+            if (await StudyCardService.DeleteSetAsync(set.Id))
+            {
+                _studyCardSets.Remove(set);
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = "Failed to delete study set. Please try again.";
+            Console.Error.WriteLine($"Error deleting set: {ex.Message}");
+        }
     }
 
     private void NavigateToHome()

@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using StudyCardsGenerator.Models;
 using StudyCardsGenerator.Services.Interfaces;
 
@@ -6,35 +7,91 @@ namespace StudyCardsGenerator.Services
     public class StudyCardService : IStudyCardService
     {
         private readonly HttpClient _httpClient;
+        private readonly IAuthService _authService;
 
-        public StudyCardService(HttpClient httpClient)
+        public StudyCardService(HttpClient httpClient, IAuthService authService)
         {
             _httpClient = httpClient;
+            _authService = authService;
         }
 
-        public async Task<List<StudyCard>> GenerateStudyCardsAsync(byte[] pdfContent, string model)
+        public async Task<List<StudyCard>> GenerateStudyCardsAsync(Stream pdfStream, string title, int targetCount = 10, string? model = null)
         {
-            await Task.Delay(2000);
-            return GetSampleStudyCards();
+            var token = await _authService.GetToken();
+            if (string.IsNullOrEmpty(token))
+                throw new UnauthorizedAccessException("No authentication token available");
+
+            _httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+            var content = new MultipartFormDataContent();
+            content.Add(new StreamContent(pdfStream), "file", "document.pdf");
+            content.Add(new StringContent(title), "title");
+            content.Add(new StringContent(targetCount.ToString()), "targetCount");
+            if (!string.IsNullOrEmpty(model))
+                content.Add(new StringContent(model), "model");
+
+            var response = await _httpClient.PostAsync("api/flashcards/sets", content);
+            response.EnsureSuccessStatusCode();
+
+            var result = await response.Content.ReadFromJsonAsync<StudyCardSet>();
+            return result?.StudyCards ?? new List<StudyCard>();
         }
 
-        public List<StudyCard> GetSampleStudyCards()
+        public async Task<List<StudyCard>> GetStudyCardsAsync(int setId)
         {
-            return new List<StudyCard>
-            {
-                new() { Question = "What is the capital of France?", Answer = "Paris" },
-                new() { Question = "Who wrote 'Romeo and Juliet'?", Answer = "William Shakespeare" },
-                new() { Question = "What is the chemical symbol for gold?", Answer = "Au" },
-                new() { Question = "What is the largest planet in our solar system?", Answer = "Jupiter" },
-                new() { Question = "Who painted the Mona Lisa?", Answer = "Leonardo da Vinci" },
-                new() { Question = "What is the square root of 144?", Answer = "12" },
-                new() { Question = "What is the main ingredient in guacamole?", Answer = "Avocado" },
-                new() { Question = "Who was the first president of the United States?", Answer = "George Washington" },
-                new() { Question = "What is the capital of Japan?", Answer = "Tokyo" },
-                new() { Question = "What is the chemical formula for water?", Answer = "H2O" },
-                new() { Question = "Who wrote '1984'?", Answer = "George Orwell" },
-                new() { Question = "What is the largest ocean on Earth?", Answer = "Pacific Ocean" }
-            };
+            var set = await GetSetAsync(setId);
+            return set?.StudyCards ?? new List<StudyCard>();
+        }
+
+        public async Task<List<StudyCardSet>> GetAllSetsAsync()
+        {
+            var token = await _authService.GetToken();
+            if (string.IsNullOrEmpty(token))
+                throw new UnauthorizedAccessException("No authentication token available");
+
+            _httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+            var response = await _httpClient.GetFromJsonAsync<List<StudyCardSet>>("api/flashcards/sets");
+            return response ?? new List<StudyCardSet>();
+        }
+
+        public async Task<StudyCardSet> GetSetAsync(int setId)
+        {
+            var token = await _authService.GetToken();
+            if (string.IsNullOrEmpty(token))
+                throw new UnauthorizedAccessException("No authentication token available");
+
+            _httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+            return await _httpClient.GetFromJsonAsync<StudyCardSet>($"api/flashcards/sets/{setId}")
+                ?? throw new Exception("Failed to retrieve flashcard set");
+        }
+
+        public async Task<bool> DeleteSetAsync(int setId)
+        {
+            var token = await _authService.GetToken();
+            if (string.IsNullOrEmpty(token))
+                throw new UnauthorizedAccessException("No authentication token available");
+
+            _httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+            var response = await _httpClient.DeleteAsync($"api/flashcards/sets/{setId}");
+            return response.IsSuccessStatusCode;
+        }
+
+        public async Task<StudyCardSet> UpdateSetTitleAsync(int setId, string newTitle)
+        {
+            var token = await _authService.GetToken();
+            if (string.IsNullOrEmpty(token))
+                throw new UnauthorizedAccessException("No authentication token available");
+
+            _httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+            var response = await _httpClient.PutAsJsonAsync($"api/flashcards/sets/{setId}", newTitle);
+            response.EnsureSuccessStatusCode();
+
+            return await response.Content.ReadFromJsonAsync<StudyCardSet>()
+                ?? throw new Exception("Failed to update flashcard set");
         }
     }
 }

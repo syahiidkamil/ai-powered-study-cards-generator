@@ -1,6 +1,7 @@
 ﻿@page "/"
 @using Microsoft.AspNetCore.Components.Forms
 @using StudyCardsGenerator.Attributes
+@using StudyCardsGenerator.Services.Interfaces
 @attribute [RequireAuthentication]
 
 <PageTitle>Study Cards AI - AI-Powered Study Cards Generator</PageTitle>
@@ -89,7 +90,10 @@
     private string _selectedModel = "";
     private IBrowserFile? _uploadedFile;
     private bool _isGenerating = false;
-    private NavigationManager NavigationManager { get; set; } = default!;
+    private string? _errorMessage;
+
+    [Inject]
+    private IStudyCardService StudyCardService { get; set; } = default!;
 
     [Inject]
     public NavigationManager NavManager { get; set; } = default!;
@@ -97,6 +101,7 @@
     private void OnFileSelected(InputFileChangeEventArgs e)
     {
         _uploadedFile = e.File;
+        _errorMessage = null;
     }
 
     private async Task GenerateStudycards()
@@ -107,11 +112,28 @@
         }
 
         _isGenerating = true;
+        _errorMessage = null;
 
-        await Task.Delay(3000);
+        try
+        {
+            using var stream = _uploadedFile.OpenReadStream();
+            var cards = await StudyCardService.GenerateStudyCardsAsync(
+            stream,
+            _uploadedFile.Name,
+            10,
+            _selectedModel
+            );
 
-        _isGenerating = false;
-
-        NavManager.NavigateTo("/study-cards");
+            NavManager.NavigateTo("/study-cards");
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = "Failed to generate study cards. Please try again.";
+            Console.Error.WriteLine($"Error generating cards: {ex.Message}");
+        }
+        finally
+        {
+            _isGenerating = false;
+        }
     }
 }
